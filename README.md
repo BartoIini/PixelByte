@@ -1,5 +1,4 @@
-# PixelByte
-A game engine written entirely in Java.
+![PixelByte](https://github.com/BartoIini/PixelByte/assets/74437883/f79c41c4-ba91-4571-b534-52467dfa1152)
 
 ## Example Entry Point
 ```java
