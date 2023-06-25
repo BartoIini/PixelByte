@@ -12,7 +12,10 @@ public static void main(String[] args) {
     Engine engine = EngineFactory.createEngineRuntime(new StringLoader(), new BitmapLoader());
 
     // Add a camera to the scene
-    engine.getSceneManager().getCurrentScene().addEntity(new Entity(new Camera(), new Transform()));
+    engine.getSceneManager().getCurrentScene().addEntity(
+        new Entity(
+            new Camera(),
+            new Transform()));
 
     // Add a renderer to the engine
     engine.addModule(new Renderer(Engine.NAME + " v." + Engine.VERSION, width, height, scale) {
