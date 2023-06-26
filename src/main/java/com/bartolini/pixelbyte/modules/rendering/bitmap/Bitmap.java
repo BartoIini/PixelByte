@@ -256,11 +256,11 @@ public class Bitmap {
         int bitmapCountX = getWidth() / bitmapWidth;
         int bitmapCountY = getHeight() / bitmapHeight;
 
-        Bitmap[][] bitmaps = new Bitmap[bitmapCountX][bitmapCountY];
+        Bitmap[][] bitmaps = new Bitmap[bitmapCountY][bitmapCountX];
 
         for (int y = 0; y < bitmapCountY; y++) {
             for (int x = 0; x < bitmapCountX; x++) {
-                bitmaps[x][y] = getSubBitmap(x * bitmapWidth, y * bitmapHeight, bitmapWidth, bitmapHeight);
+                bitmaps[y][x] = getSubBitmap(x * bitmapWidth, y * bitmapHeight, bitmapWidth, bitmapHeight);
             }
         }
 

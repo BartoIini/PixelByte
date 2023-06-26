@@ -75,7 +75,7 @@ public class StringIndexedBitmapFont implements BitmapFont {
                 // Break if charIndex is bigger than the number of defined chars (-charsCountY because "\n" is ignored)
                 if (charIndex >= chars.length() - charsCountY) break;
                 // Map the char onto its matching char Bitmap (+y to account for the missing "\n")
-                charMap.put(chars.charAt(charIndex + y), font[x][y]);
+                charMap.put(chars.charAt(charIndex + y), font[y][x]);
             }
         }
 
