@@ -40,12 +40,25 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public abstract class Renderer extends EngineModule {
 
+    private static final Variable<Integer> varWidth;
+    private static final Variable<Integer> varHeight;
+    private static final Variable<Integer> varScale;
+
+    static {
+        varWidth = new Variable<>(
+                "width", 16, true, 16, false, Integer.MAX_VALUE,
+                "The width of the window");
+        varHeight = new Variable<>(
+                "height", 16, true, 16, false, Integer.MAX_VALUE,
+                "The height of the window");
+        varScale = new Variable<>(
+                "scale", 1, true, 1, false, Integer.MAX_VALUE,
+                "The pixel size in the window");
+    }
+
     private final Logger logger = LoggerFactory.getLogger(this);
     private final String iconPath = "/icons/pixel_icon.png";
     private final String title;
-    private final Variable<Integer> varWidth;
-    private final Variable<Integer> varHeight;
-    private final Variable<Integer> varScale;
     private final Variable<Boolean> varShowFps;
     private final FPSTracker fpsTracker = new FPSTracker();
     private final PostProcessingFilter noFocusFilter;
@@ -80,24 +93,46 @@ public abstract class Renderer extends EngineModule {
         // Reference the title
         this.title = Objects.requireNonNull(title, "title must not be null");
 
-        // Initialize variables
-        getEnvironment().addVariable(this.varWidth = new Variable<>(
-                "width", width, true, 16, false, Integer.MAX_VALUE,
-                "The width of the window"));
-
-        getEnvironment().addVariable(this.varHeight = new Variable<>(
-                "height", height, true, 16, false, Integer.MAX_VALUE,
-                "The height of the window"));
-
-        getEnvironment().addVariable(this.varScale = new Variable<>(
-                "scale", scale, true, 1, false, Integer.MAX_VALUE,
-                "The pixel size in the window"));
+        // Add variables
+        varWidth.setValue(width);
+        getEnvironment().addVariable(varWidth);
+        varHeight.setValue(height);
+        getEnvironment().addVariable(varHeight);
+        varScale.setValue(scale);
+        getEnvironment().addVariable(varScale);
 
         getEnvironment().addVariable(this.varShowFps = new Variable<>(
                 "show_fps", false,
                 "Enables the display of FPS."));
 
         this.noFocusFilter = new PerPixelFilter(color -> Colors.darken(color, 0.6f));
+    }
+
+    /**
+     * Returns the width of the framebuffer in pixels.
+     *
+     * @return the width of the framebuffer in pixels.
+     */
+    public static int getWidth() {
+        return varWidth.getValue();
+    }
+
+    /**
+     * Returns the height of the framebuffer in pixels.
+     *
+     * @return the height of the framebuffer in pixels.
+     */
+    public static int getHeight() {
+        return varHeight.getValue();
+    }
+
+    /**
+     * Returns the scale of the pixels on the screen.
+     *
+     * @return the scale of the pixels of the screen.
+     */
+    public static int getScale() {
+        return varScale.getValue();
     }
 
     @Override
