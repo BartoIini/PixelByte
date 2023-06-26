@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="pixelbyte:sources">
+    <output-path>$PROJECT_DIR$/out/artifacts/pixelbyte</output-path>
+    <root id="archive" name="pixelbyte-1.1-sources.jar">
+      <element id="module-source" name="pixelbyte" />
+    </root>
+  </artifact>
+</component>

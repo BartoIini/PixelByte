@@ -1,6 +1,7 @@
 package com.bartolini.pixelbyte.modules.rendering.bitmap;
 
 import com.bartolini.pixelbyte.math.vector.Vector2f;
+import com.bartolini.pixelbyte.modules.rendering.bitmap.blending.BlendFunction;
 import com.bartolini.pixelbyte.modules.rendering.bitmap.font.BitmapFont;
 import com.bartolini.pixelbyte.modules.rendering.bitmap.font.BitmapFontMetrics;
 import com.bartolini.pixelbyte.modules.rendering.bitmap.font.StringIndexedBitmapFont;
@@ -12,14 +13,16 @@ import java.util.Objects;
  * A <i>BitmapGraphics</i> is used to draw to an underlying {@linkplain Bitmap}.
  *
  * @author Bartolini
- * @version 1.0
+ * @version 1.1
  */
 public class BitmapGraphics {
 
     protected final Bitmap bitmap;
 
     protected BitmapFont font;
+    protected BlendFunction blendFunction;
     private int clearValue = 0;
+    private boolean blendingEnabled = true;
 
     /**
      * Allocates a new {@code BitmapGraphics} by passing in its {@linkplain Bitmap} and sets the {@linkplain BitmapFont}
@@ -31,6 +34,7 @@ public class BitmapGraphics {
     public BitmapGraphics(Bitmap bitmap) {
         this.bitmap = Objects.requireNonNull(bitmap, "bitmap must not be null");
         this.font = StringIndexedBitmapFont.DEFAULT_FONT;
+        this.blendFunction = BlendFunction.DEFAULT;
     }
 
     /**
@@ -59,6 +63,25 @@ public class BitmapGraphics {
      */
     public BitmapFontMetrics getFontMetrics() {
         return font.getBitmapFontMetrics();
+    }
+
+    /**
+     * Returns the {@linkplain BlendFunction} used by this {@code BitmapGraphics}.
+     *
+     * @return the {@code BlendFunction} used by this {@code BitmapGraphics}.
+     */
+    public BlendFunction getBlendFunction() {
+        return blendFunction;
+    }
+
+    /**
+     * Sets the {@linkplain BlendFunction} for this {@code BitmapGraphics}.
+     *
+     * @param blendFunction the {@code BlendFunction} for this {@code BitmapGraphics}.
+     * @throws NullPointerException if the specified {@code BlendFunction} is {@code null}.
+     */
+    public void setBlendFunction(BlendFunction blendFunction) {
+        this.blendFunction = Objects.requireNonNull(blendFunction, "blendFunction must not be null");
     }
 
     /**
@@ -98,6 +121,24 @@ public class BitmapGraphics {
     }
 
     /**
+     * Returns whether blending is enabled for this {@code BitmapGraphics}.
+     *
+     * @return {@code true} if blending is enabled for this {@code BitmapGraphics}; {@code false} otherwise.
+     */
+    public boolean isBlendingEnabled() {
+        return blendingEnabled;
+    }
+
+    /**
+     * Enables or disables blending for this {@code BitmapGraphics}.
+     *
+     * @param blendingEnabled if {@code true} enables blending for this {@code BitmapGraphics}.
+     */
+    public void enableBlending(boolean blendingEnabled) {
+        this.blendingEnabled = blendingEnabled;
+    }
+
+    /**
      * Draws the passed in {@linkplain Bitmap} onto the {@code Bitmap} used by this {@code BitmapGraphics}.
      *
      * @param bitmap the source {@code Bitmap}.
@@ -112,18 +153,6 @@ public class BitmapGraphics {
     public void drawBitmap(Bitmap bitmap, int x, int y, int x0, int y0, int width, int height) {
         Objects.requireNonNull(bitmap, "bitmap must not be null");
 
-        // PARALLEL VERSION
-//        IntStream.range(0, height).parallel().forEach(i -> {
-//            if (i + y < 0 || i + y >= this.bitmap.getHeight() || i + y0 >= bitmap.getHeight()) return;
-//
-//            IntStream.range(0, width).parallel().forEach(j -> {
-//                if (j + x < 0 || j + x >= this.bitmap.getWidth() || j + x0 >= bitmap.getWidth()) return;
-//
-//                int value = bitmap.getPixel(j + x0, i + y0);
-//                this.bitmap.setPixel(j + x, i + y, value);
-//            });
-//        });
-
         for (int i = 0; i < height; i++) {
             if (i + y < 0 || i + y >= this.bitmap.getHeight() || i + y0 >= bitmap.getHeight()) continue;
 
@@ -131,9 +160,15 @@ public class BitmapGraphics {
                 if (j + x < 0 || j + x >= this.bitmap.getWidth() || j + x0 >= bitmap.getWidth()) continue;
 
                 int value = bitmap.getPixel(j + x0, i + y0);
-                // TODO: Add Bitmap blending
-                if ((value & 0xff000000) != 0) {
+                if ((value & 0xff000000) == 0xff000000) {
                     this.bitmap.setPixel(j + x, i + y, value);
+                } else {
+                    if (blendingEnabled) {
+                        int currentValue = this.bitmap.getPixel(j + x, i + y);
+                        this.bitmap.setPixel(j + x, i + y, blendFunction.blend(value, currentValue));
+                    } else {
+                        this.bitmap.setPixel(j + x, i + y, value | 0xff000000);
+                    }
                 }
             }
         }
@@ -149,6 +184,58 @@ public class BitmapGraphics {
      */
     public void drawBitmap(Bitmap bitmap, int x, int y) {
         drawBitmap(bitmap, x, y, 0, 0, bitmap.getWidth(), bitmap.getHeight());
+    }
+
+    /**
+     * Draws the passed in {@linkplain Bitmap} onto the {@code Bitmap} used by this {@code BitmapGraphics}.
+     *
+     * @param bitmap  the source {@code Bitmap}.
+     * @param x       the starting x coordinate in the destination {@code Bitmap}.
+     * @param y       the starting y coordinate in the destination {@code Bitmap}.
+     * @param x0      the starting x coordinate in the source {@code Bitmap}.
+     * @param y0      the starting y coordinate in the source {@code Bitmap}.
+     * @param width   the width of the read area in the source {@code Bitmap}.
+     * @param height  the height of the read area in the source {@code Bitmap}.
+     * @param opacity the opacity of the rendered {@code Bitmap}, (0 = transparent, 1 = opaque).
+     * @throws NullPointerException if the specified {@code Bitmap} is {@code null}.
+     */
+    public void drawBitmap(Bitmap bitmap, int x, int y, int x0, int y0, int width, int height, float opacity) {
+        Objects.requireNonNull(bitmap, "bitmap must not be null");
+
+        for (int i = 0; i < height; i++) {
+            if (i + y < 0 || i + y >= this.bitmap.getHeight() || i + y0 >= bitmap.getHeight()) continue;
+
+            for (int j = 0; j < width; j++) {
+                if (j + x < 0 || j + x >= this.bitmap.getWidth() || j + x0 >= bitmap.getWidth()) continue;
+
+                int[] valueARGB = Colors.getARGB(bitmap.getPixel(j + x0, i + y0));
+                valueARGB[0] = Math.round(valueARGB[0] * opacity);
+                int value = Colors.getColor(valueARGB);
+                if ((value & 0xff000000) == 0xff000000) {
+                    this.bitmap.setPixel(j + x, i + y, value);
+                } else {
+                    if (blendingEnabled) {
+                        int currentValue = this.bitmap.getPixel(j + x, i + y);
+                        this.bitmap.setPixel(j + x, i + y, blendFunction.blend(value, currentValue));
+                    } else {
+                        this.bitmap.setPixel(j + x, i + y, value | 0xff000000);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Draws the passed in {@linkplain Bitmap} onto the {@code Bitmap} used by this {@code BitmapGraphics}.
+     *
+     * @param bitmap  the source {@code Bitmap}.
+     * @param x       the starting x coordinate in the destination {@code Bitmap}.
+     * @param y       the starting y coordinate in the destination {@code Bitmap}.
+     * @param opacity the opacity of the rendered {@code Bitmap}, (0 = transparent, 1 = opaque).
+     * @throws NullPointerException if the specified {@code Bitmap} is {@code null}.
+     */
+    public void drawBitmap(Bitmap bitmap, int x, int y, float opacity) {
+        drawBitmap(bitmap, x, y, 0, 0, bitmap.getWidth(), bitmap.getHeight(), opacity);
     }
 
     /**
@@ -168,28 +255,22 @@ public class BitmapGraphics {
     public void drawBitmap(Bitmap bitmap, int x, int y, int x0, int y0, int width, int height, int color) {
         Objects.requireNonNull(bitmap, "bitmap must not be null");
 
-        // PARALLEL VERSION
-//        IntStream.range(0, height).parallel().forEach(i -> {
-//            if (i + y < 0 || i + y >= this.bitmap.getHeight() || i + y0 >= bitmap.getHeight()) return;
-//
-//            IntStream.range(0, width).parallel().forEach(j -> {
-//                if (j + x < 0 || j + x >= this.bitmap.getWidth() || j + x0 >= bitmap.getWidth()) return;
-//
-//                int value = bitmap.getPixel(j + x0, i + y0);
-//                this.bitmap.setPixel(j + x, i + y, value);
-//            });
-//        });
-
         for (int i = 0; i < height; i++) {
             if (i + y < 0 || i + y >= this.bitmap.getHeight() || i + y0 >= bitmap.getHeight()) continue;
 
             for (int j = 0; j < width; j++) {
                 if (j + x < 0 || j + x >= this.bitmap.getWidth() || j + x0 >= bitmap.getWidth()) continue;
 
-                int value = bitmap.getPixel(j + x0, i + y0);
-                // TODO: Add Bitmap blending
-                if ((value & 0xff000000) != 0) {
-                    this.bitmap.setPixel(j + x, i + y, Colors.multiply(value, color));
+                int value = Colors.multiply(bitmap.getPixel(j + x0, i + y0), color);
+                if ((value & 0xff000000) == 0xff000000) {
+                    this.bitmap.setPixel(j + x, i + y, value);
+                } else {
+                    if (blendingEnabled) {
+                        int currentValue = this.bitmap.getPixel(j + x, i + y);
+                        this.bitmap.setPixel(j + x, i + y, blendFunction.blend(value, currentValue));
+                    } else {
+                        this.bitmap.setPixel(j + x, i + y, value | 0xff000000);
+                    }
                 }
             }
         }
@@ -207,6 +288,62 @@ public class BitmapGraphics {
      */
     public void drawBitmap(Bitmap bitmap, int x, int y, int color) {
         drawBitmap(bitmap, x, y, 0, 0, bitmap.getWidth(), bitmap.getHeight(), color);
+    }
+
+    /**
+     * Draws the passed in {@linkplain Bitmap} onto the {@code Bitmap} used by this {@code BitmapGraphics}. The color
+     * read from the source {@code Bitmap} is premultiplied with the specified color before being drawn.
+     *
+     * @param bitmap  the source {@code Bitmap}.
+     * @param x       the starting x coordinate in the destination {@code Bitmap}.
+     * @param y       the starting y coordinate in the destination {@code Bitmap}.
+     * @param x0      the starting x coordinate in the source {@code Bitmap}.
+     * @param y0      the starting y coordinate in the source {@code Bitmap}.
+     * @param width   the width of the read area in the source {@code Bitmap}.
+     * @param height  the height of the read area in the source {@code Bitmap}.
+     * @param color   the color to premultiply the source {@code Bitmap} with before drawing.
+     * @param opacity the opacity of the rendered {@code Bitmap}, (0 = transparent, 1 = opaque).
+     * @throws NullPointerException if the specified {@code Bitmap} is {@code null}.
+     */
+    public void drawBitmap(Bitmap bitmap, int x, int y, int x0, int y0, int width, int height, int color, float opacity) {
+        Objects.requireNonNull(bitmap, "bitmap must not be null");
+
+        for (int i = 0; i < height; i++) {
+            if (i + y < 0 || i + y >= this.bitmap.getHeight() || i + y0 >= bitmap.getHeight()) continue;
+
+            for (int j = 0; j < width; j++) {
+                if (j + x < 0 || j + x >= this.bitmap.getWidth() || j + x0 >= bitmap.getWidth()) continue;
+
+                int[] valueARGB = Colors.getARGB(Colors.multiply(bitmap.getPixel(j + x0, i + y0), color));
+                valueARGB[0] = Math.round(valueARGB[0] * opacity);
+                int value = Colors.getColor(valueARGB);
+                if ((value & 0xff000000) == 0xff000000) {
+                    this.bitmap.setPixel(j + x, i + y, value);
+                } else {
+                    if (blendingEnabled) {
+                        int currentValue = this.bitmap.getPixel(j + x, i + y);
+                        this.bitmap.setPixel(j + x, i + y, blendFunction.blend(value, currentValue));
+                    } else {
+                        this.bitmap.setPixel(j + x, i + y, value | 0xff000000);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Draws the passed in {@linkplain Bitmap} onto the {@code Bitmap} used by this {@code BitmapGraphics}. The color
+     * read from the source {@code Bitmap} is premultiplied with the specified color before being drawn.
+     *
+     * @param bitmap  the source {@code Bitmap}.
+     * @param x       the starting x coordinate in the destination {@code Bitmap}.
+     * @param y       the starting y coordinate in the destination {@code Bitmap}.
+     * @param color   the color to premultiply the source {@code Bitmap} with before drawing.
+     * @param opacity the opacity of the rendered {@code Bitmap}, (0 = transparent, 1 = opaque).
+     * @throws NullPointerException if the specified {@code Bitmap} is {@code null}.
+     */
+    public void drawBitmap(Bitmap bitmap, int x, int y, int color, float opacity) {
+        drawBitmap(bitmap, x, y, 0, 0, bitmap.getWidth(), bitmap.getHeight(), color, opacity);
     }
 
     /**
@@ -254,7 +391,7 @@ public class BitmapGraphics {
     public void drawLine(Vector2f p1, Vector2f p2, int color) {
         Objects.requireNonNull(p1, "p1 must not be null");
         Objects.requireNonNull(p2, "p2 must not be null");
-        drawLine((int) p1.getX(), (int) p1.getY(), (int) p2.getX(), (int) p2.getY(), color);
+        drawLine(Math.round(p1.getX()), Math.round(p1.getY()), Math.round(p2.getX()), Math.round(p2.getY()), color);
     }
 
     /**
