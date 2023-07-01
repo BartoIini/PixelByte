@@ -15,9 +15,6 @@ import com.bartolini.pixelbyte.modules.terminal.ui.color.DefaultColorScheme;
 import com.bartolini.pixelbyte.modules.time.Time;
 
 import java.awt.*;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.file.Path;
 import java.util.Objects;
 
 /**
@@ -33,9 +30,9 @@ public class EngineFactory {
     }
 
     /**
-     * Creates an {@linkplain Engine} instance by specifying the {@linkplain SceneManager} and a varargs of
-     * {@linkplain AssetLoader AssetLoaders}. The {@code Engine} will be equipped with the following
-     * {@linkplain EngineModule EngineModules}:
+     * Creates an {@linkplain Engine} instance by specifying the {@linkplain SceneManager}, the path to the root
+     * directory with assets, and a varargs of {@linkplain AssetLoader AssetLoaders}. The {@code Engine} will be
+     * equipped with the following {@linkplain EngineModule EngineModules}:
      * <ul>
      *   <li>{@linkplain AssetManager} (with the specified AssetLoaders)</li>
      *   <li>{@linkplain Time}</li>
@@ -46,12 +43,12 @@ public class EngineFactory {
      * @param sceneManager the {@code SceneManager} used for the {@code Engine}.
      * @return an {@code Engine} instance equipped with common {@code EngineModules}, based on the
      * specified parameters.
-     * @throws NullPointerException     if the specified {@code SceneManager} or any of the specified
+     * @throws NullPointerException     if the specified {@code SceneManager}, assets root path, or any of the specified
      *                                  {@code AssetLoaders} are {@code null}.
      * @throws IllegalArgumentException if there are duplicates in the specified {@code AssetLoaders}, or if multiple
      *                                  of the specified {@code AssetLoaders} share supported file extensions.
      */
-    public static Engine createEngineRuntime(SceneManager sceneManager, AssetLoader<?>... assetLoaders) {
+    public static Engine createEngineRuntime(SceneManager sceneManager, String assetsRoot, AssetLoader<?>... assetLoaders) {
         Objects.requireNonNull(sceneManager, "sceneManager must not be null");
 
         // Set default system LookAndFeel
@@ -59,18 +56,7 @@ public class EngineFactory {
 
         Engine engine = new Engine(sceneManager, 100);
 
-        Path assetsPath;
-        try {
-            URL assetsURL = Engine.class.getResource("/assets");
-            if (assetsURL == null) {
-                assetsURL = Engine.class.getResource("/");
-            }
-            assetsPath = Path.of(Objects.requireNonNull(assetsURL, "assetsURL must not be null").toURI());
-        } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
-        }
-
-        engine.addModule(new AssetManager(assetsPath, assetLoaders));
+        engine.addModule(new AssetManager(assetsRoot, assetLoaders));
         engine.addModule(new Time());
         engine.addModule(new Terminal(new SwingTerminalUI(
                 "Terminal",
@@ -95,15 +81,16 @@ public class EngineFactory {
      *
      * @return an {@code Engine} instance equipped with common {@code EngineModules}, based on the
      * specified parameters.
-     * @throws NullPointerException     if any of the specified {@code AssetLoaders} are {@code null}.
+     * @throws NullPointerException     if the specified assets root path, or any of the specified {@code AssetLoaders}
+     *                                  are {@code null}.
      * @throws IllegalArgumentException if there are duplicates in the specified {@code AssetLoaders}, or if multiple
      *                                  of the specified {@code AssetLoaders} share supported file extensions.
      */
-    public static Engine createEngineRuntime(AssetLoader<?>... assetLoaders) {
+    public static Engine createEngineRuntime(String assetsRoot, AssetLoader<?>... assetLoaders) {
         // Create a scene manager
         SceneManager sceneManager = new SceneManager();
 
         // Create an engine instance with the created sceneManager
-        return createEngineRuntime(sceneManager, assetLoaders);
+        return createEngineRuntime(sceneManager, assetsRoot, assetLoaders);
     }
 }

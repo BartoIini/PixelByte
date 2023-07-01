@@ -8,8 +8,10 @@ import com.bartolini.pixelbyte.logging.LoggerFactory;
 import java.io.FileInputStream;
 import java.io.IOError;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -17,7 +19,7 @@ import java.util.stream.Stream;
  * An <i>AssetManager</i> is an {@linkplain EngineModule} responsible for loading and providing assets.
  *
  * @author Bartolini
- * @version 1.1
+ * @version 1.2
  */
 public class AssetManager extends EngineModule {
 
@@ -27,22 +29,24 @@ public class AssetManager extends EngineModule {
 
     private final Logger logger = LoggerFactory.getLogger(this);
     private final Map<String, AssetLoader<?>> assetLoaderMap = new HashMap<>();
-    private final Path assetsPath;
+    private final String assetsRoot;
+
+    private int totalAssets = 0;
 
     /**
-     * Allocates a new {@code AssetManager} by passing in the root {@linkplain Path} of the assets, as well as the
+     * Allocates a new {@code AssetManager} by passing in the root path of the assets, as well as the
      * {@linkplain AssetLoader AssetLoaders}.
      *
-     * @param assetsPath   the root {@code Path} of the assets.
+     * @param assetsRoot   the root path of the assets.
      * @param assetLoaders the {@code AssetLoaders} to be used by this {@code AssetManager}.
      * @throws NullPointerException     if the specified assetsPath or any of the specified {@code AssetLoaders} are
      *                                  {@code null}.
      * @throws IllegalArgumentException if there are duplicates in the specified {@code AssetLoaders}, or if multiple of
      *                                  the specified {@code AssetLoaders} share supported file extensions.
      */
-    public AssetManager(Path assetsPath, AssetLoader<?>... assetLoaders) {
+    public AssetManager(String assetsRoot, AssetLoader<?>... assetLoaders) {
         super("Asset Manager", "asset");
-        this.assetsPath = Objects.requireNonNull(assetsPath, "assetPath must not be null");
+        this.assetsRoot = Objects.requireNonNull(assetsRoot, "assetsRoot must not be null");
 
         // Check for duplicate or null AssetLoaders
         Set<AssetLoader<?>> assetLoaderSet = Set.of(assetLoaders);
@@ -52,7 +56,7 @@ public class AssetManager extends EngineModule {
         for (AssetLoader<?> assetLoader : assetLoaderSet) {
             for (String extension : assetLoader.getExtensions()) {
                 if (!extensionSet.add(extension)) {
-                    throw new IllegalArgumentException("specified AssetLoaders share supported file extensions");
+                    throw new IllegalArgumentException("the specified AssetLoaders share supported file extensions");
                 }
             }
         }
@@ -65,12 +69,58 @@ public class AssetManager extends EngineModule {
 
     @Override
     public void initialize() throws ModuleInitializeException {
-        int totalAssets = 0;
-        try (Stream<Path> assetPaths = Files.walk(assetsPath)) {
+        URL assetsRootURL = AssetManager.class.getResource(assetsRoot);
+        // Check if the specified assets root path does exist
+        if (assetsRootURL == null) {
+            throw new ModuleInitializeException(this, "the specified assets root path: " + assetsRoot + " does not exist");
+        }
+
+        // Retrieve the URI and check if the URI is valid
+        URI assetsRootURI;
+        try {
+            assetsRootURI = assetsRootURL.toURI();
+        } catch (URISyntaxException e) {
+            throw new ModuleInitializeException(this, "the specified assets root path: " + assetsRoot + " produces an invalid URI");
+        }
+
+        // Check if the specified path points to a resource on the drive or one inside the JAR
+        Path assetsRootPath;
+        switch (assetsRootURI.getScheme()) {
+            case "file" -> {
+                // Resources are on the hard drive
+                assetsRootPath = Paths.get(assetsRootURI);
+                // Load assets from drive
+                logger.info("Loading assets from '" + assetsRootPath.toAbsolutePath() + "'...");
+                loadResourcesFromDrive(assetsRootPath);
+            }
+            case "jar" -> {
+                // Resources are within the JAR file
+                FileSystem fileSystem;
+                try {
+                    fileSystem = FileSystems.newFileSystem(assetsRootURI, Collections.emptyMap());
+                    assetsRootPath = fileSystem.getPath(assetsRoot);
+                    // Load assets from JAR
+                    logger.info("Extracting assets from JAR at '" + assetsRootPath.toAbsolutePath() + "'...");
+                    loadResourcesFromJar(assetsRootPath);
+                    fileSystem.close();
+                } catch (IOException e) {
+                    throw new ModuleInitializeException(this, "error reading the specified assets root path: " + assetsRoot + "; could not create the file system");
+                }
+            }
+            default ->
+                    throw new ModuleInitializeException(this, "unsupported URI scheme: " + assetsRootURI.getScheme());
+        }
+
+        logger.fine("Finished loading " + totalAssets + " assets.");
+        initialized = true;
+    }
+
+    private void loadResourcesFromDrive(Path resourcePath) throws ModuleInitializeException {
+        try (Stream<Path> assetPaths = Files.walk(resourcePath)) {
             // Iterate through all files in the specified assets path
             for (Path path : assetPaths.filter(Files::isRegularFile).toList()) {
                 // Get file name and format it accordingly
-                String assetName = path.subpath(assetsPath.getNameCount(), path.getNameCount()).toString();
+                String assetName = path.subpath(resourcePath.getNameCount(), path.getNameCount()).toString();
                 assetName = assetName.replace('\\', '/');
 
                 // Ignore file with no file extension
@@ -91,16 +141,58 @@ public class AssetManager extends EngineModule {
 
                 // Load asset and add it to assetMap
                 Object asset = assetLoader.loadAsset(new FileInputStream(path.toAbsolutePath().toString()));
-                logger.info("Loaded " + assetName);
+                logger.fine("Loaded " + assetLoader.getAssetType().getSimpleName() + " from '" + assetName + "'");
                 totalAssets++;
                 assetMap.computeIfAbsent(asset.getClass(), c -> new HashMap<>()).put(assetName, asset);
             }
         } catch (SecurityException | IOException | IOError | AssetLoadingException e) {
-            throw new ModuleInitializeException(this, "error reading assets at '" + assetsPath + "'", e);
+            throw new ModuleInitializeException(this, "error reading assets at '" + resourcePath + "'", e);
         }
+    }
 
-        logger.fine("Finished loading " + totalAssets + " assets.");
-        initialized = true;
+    private void loadResourcesFromJar(Path resourcePath) throws ModuleInitializeException {
+        Deque<Path> pathStack = new LinkedList<>();
+        pathStack.push(resourcePath);
+
+        while (!pathStack.isEmpty()) {
+            Path directoryPath = pathStack.pop();
+
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(directoryPath)) {
+                for (Path path : stream) {
+                    if (Files.isDirectory(path)) {
+                        pathStack.push(path);
+                    } else {
+                        // Get file name and format it accordingly
+                        String assetName = path.subpath(resourcePath.getNameCount(), path.getNameCount()).toString();
+                        assetName = assetName.replace('\\', '/');
+
+                        // Ignore file with no file extension
+                        if (!assetName.contains(".")) {
+                            continue;
+                        }
+
+                        // Get file extension
+                        String fileExtension = assetName.substring(assetName.lastIndexOf("."));
+
+                        // Get according AssetLoader for file extension
+                        AssetLoader<?> assetLoader = assetLoaderMap.get(fileExtension);
+
+                        // Ignore file if no AssetLoader was found for it
+                        if (assetLoader == null) {
+                            continue;
+                        }
+
+                        // Load asset and add it to assetMap
+                        Object asset = assetLoader.loadAsset(path.toUri().toURL().openStream());
+                        logger.fine("Loaded " + assetLoader.getAssetType().getSimpleName() + " from '" + assetName + "'");
+                        totalAssets++;
+                        assetMap.computeIfAbsent(asset.getClass(), c -> new HashMap<>()).put(assetName, asset);
+                    }
+                }
+            } catch (SecurityException | IOException | IOError | AssetLoadingException e) {
+                throw new ModuleInitializeException(this, "error reading assets at '" + resourcePath + "'", e);
+            }
+        }
     }
 
     /**
